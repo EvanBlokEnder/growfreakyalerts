@@ -1,0 +1,13 @@
+{
+    "name": "grow-a-garden-notifier",
+    "version": "1.0.0",
+    "description": "Email notifier for Grow a Garden changes",
+    "main": "NotifyChanges.js",
+    "scripts": {
+        "start": "node NotifyChanges.js"
+    },
+    "dependencies": {
+        "express": "^4.18.2",
+        "nodemailer": "^6.9.7"
+    }
+}
