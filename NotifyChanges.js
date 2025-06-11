@@ -23,6 +23,7 @@ let previousData = { stock: null, weather: null, restock: null, items: null };
 if (fs.existsSync(PREV_DATA_FILE)) {
     try {
         previousData = JSON.parse(fs.readFileSync(PREV_DATA_FILE, 'utf-8'));
+        console.log('[NotifyChanges] Loaded previous data:', previousData);
     } catch (err) {
         console.error(`[NotifyChanges] Error loading previous data: ${err}`);
     }
@@ -32,7 +33,7 @@ if (fs.existsSync(PREV_DATA_FILE)) {
 async function sendEmail(subject, text) {
     const mailOptions = {
         from: process.env.EMAIL_USER,
-        to: process.env.RECIPIENT_EMAIL, // Your recipient email (same as EMAIL_USER)
+        to: process.env.RECIPIENT_EMAIL, // Same as EMAIL_USER
         subject: subject,
         text: text
     };
@@ -41,30 +42,38 @@ async function sendEmail(subject, text) {
         await transporter.sendMail(mailOptions);
         console.log(`[NotifyChanges] Email sent: ${subject}`);
     } catch (err) {
-        console.error(`[NotifyChanges] Error sending email: ${err}`);
+        console.error(`[NotifyChanges] Error sending email: ${err.message}`);
     }
 }
 
 // Function to compare and notify changes
 async function checkForChanges() {
     try {
+        console.log('[NotifyChanges] Checking for changes...');
+
         // Fetch stock data
-        const stockData = await fetchStockData();
-        if (JSON.stringify(stockData) !== JSON.stringify(previousData.stock)) {
-            await sendEmail(
-                'Grow a Garden: Stock Data Updated',
-                `Stock data has changed:\n${JSON.stringify(stockData, null, 2)}`
-            );
-            previousData.stock = stockData;
+        try {
+            const stockData = await fetchStockData();
+            console.log('[NotifyChanges] Stock data:', stockData);
+            if (JSON.stringify(stockData) !== JSON.stringify(previousData.stock)) {
+                await sendEmail(
+                    'Grow a Garden: Stock Data Updated',
+                    `Stock data has changed:\n${JSON.stringify(stockData, null, 2)}`
+                );
+                previousData.stock = stockData;
+            }
+        } catch (err) {
+            console.error(`[NotifyChanges] Error fetching stock data: ${err.message}`);
         }
 
         // Fetch weather data
-        await new Promise((resolve, reject) => {
+        await new Promise((resolve) => {
             fetchWeather((err, result) => {
                 if (err) {
-                    console.error(`[NotifyChanges] Error fetching weather: ${err}`);
-                    return resolve(); // Continue even if weather fetch fails
+                    console.error(`[NotifyChanges] Error fetching weather: ${err.message}`);
+                    return resolve();
                 }
+                console.log('[NotifyChanges] Weather data:', result);
                 if (JSON.stringify(result) !== JSON.stringify(previousData.weather)) {
                     sendEmail(
                         'Grow a Garden: Weather Data Updated',
@@ -77,42 +86,55 @@ async function checkForChanges() {
         });
 
         // Check restock times
-        const restockData = calculateRestockTimes();
-        const restockTypes = ['egg', 'gear', 'seeds', 'cosmetic', 'SwarmEvent'];
-        for (const type of restockTypes) {
-            if (previousData.restock && previousData.restock[type]) {
-                if (restockData[type].LastRestock !== previousData.restock[type].LastRestock) {
-                    await sendEmail(
-                        `Grow a Garden: ${type} Restock Occurred`,
-                        `${type} restock occurred at ${restockData[type].LastRestock}.\nNext restock: ${restockData[type].countdown}`
-                    );
+        try {
+            const restockData = calculateRestockTimes();
+            console.log('[NotifyChanges] Restock data:', restockData);
+            const restockTypes = ['egg', 'gear', 'seeds', 'cosmetic', 'SwarmEvent'];
+            for (const type of restockTypes) {
+                if (previousData.restock && previousData.restock[type]) {
+                    if (restockData[type].LastRestock !== previousData.restock[type].LastRestock) {
+                        await sendEmail(
+                            `Grow a Garden: ${type} Restock Occurred`,
+                            `${type} restock occurred at ${restockData[type].LastRestock}.\nNext restock: ${restockData[type].countdown}`
+                        );
+                    }
                 }
             }
+            previousData.restock = restockData;
+        } catch (err) {
+            console.error(`[NotifyChanges] Error calculating restock times: ${err.message}`);
         }
-        previousData.restock = restockData;
 
         // Check item info
-        await fetchAndUpdateData();
-        let newItemData = null;
-        if (fs.existsSync(DATA_FILE)) {
-            newItemData = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
-        }
-        if (JSON.stringify(newItemData) !== JSON.stringify(previousData.items)) {
-            await sendEmail(
-                'Grow a Garden: Item Data Updated',
-                `Item data has changed:\n${JSON.stringify(newItemData, null, 2)}`
-            );
-            previousData.items = newItemData;
+        try {
+            await fetchAndUpdateData();
+            let newItemData = null;
+            if (fs.existsSync(DATA_FILE)) {
+                newItemData = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
+                console.log('[NotifyChanges] Item data:', newItemData);
+            } else {
+                console.log('[NotifyChanges] Database.json not found');
+            }
+            if (JSON.stringify(newItemData) !== JSON.stringify(previousData.items)) {
+                await sendEmail(
+                    'Grow a Garden: Item Data Updated',
+                    `Item data has changed:\n${JSON.stringify(newItemData, null, 2)}`
+                );
+                previousData.items = newItemData;
+            }
+        } catch (err) {
+            console.error(`[NotifyChanges] Error fetching item data: ${err.message}`);
         }
 
         // Save updated previous data
         try {
             fs.writeFileSync(PREV_DATA_FILE, JSON.stringify(previousData, null, 2));
+            console.log('[NotifyChanges] Saved previous data');
         } catch (err) {
-            console.error(`[NotifyChanges] Error saving previous data: ${err}`);
+            console.error(`[NotifyChanges] Error saving previous data: ${err.message}`);
         }
     } catch (err) {
-        console.error(`[NotifyChanges] Error checking for changes: ${err}`);
+        console.error(`[NotifyChanges] Error checking for changes: ${err.message}`);
     }
 }
 
@@ -128,6 +150,19 @@ const app = express();
 
 app.get('/', (req, res) => {
     res.json({ message: 'Grow a Garden Notifier is running' });
+});
+
+app.get('/api/items', (req, res) => {
+    try {
+        if (fs.existsSync(DATA_FILE)) {
+            const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
+            res.json(items);
+        } else {
+            res.status(404).json({ error: 'Database.json not found' });
+        }
+    } catch (err) {
+        res.status(500).json({ error: `Failed to load items: ${err.message}` });
+    }
 });
 
 registerItemInfo(app);
