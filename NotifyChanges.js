@@ -1,7 +1,7 @@
 const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
-const { register: registerItemInfo, fetchAndUpdateData, loadCachedData } = require('./GrabItemInfo');
+const { register: registerItemInfo, fetchAndUpdateData } = require('./GrabItemInfo');
 const { register: registerWeather, fetchWeather } = require('./GrabWeather');
 const { register: registerStock, fetchStockData } = require('./GetStock');
 const { register: registerRestock, calculateRestockTimes } = require('./GetRestockTime');
@@ -21,7 +21,11 @@ const transporter = nodemailer.createTransport({
 // Load previous data
 let previousData = { stock: null, weather: null, restock: null, items: null };
 if (fs.existsSync(PREV_DATA_FILE)) {
-    previousData = JSON.parse(fs.readFileSync(PREV_DATA_FILE, 'utf-8'));
+    try {
+        previousData = JSON.parse(fs.readFileSync(PREV_DATA_FILE, 'utf-8'));
+    } catch (err) {
+        console.error(`[NotifyChanges] Error loading previous data: ${err}`);
+    }
 }
 
 // Function to send email
@@ -57,7 +61,10 @@ async function checkForChanges() {
         // Fetch weather data
         await new Promise((resolve, reject) => {
             fetchWeather((err, result) => {
-                if (err) return reject(err);
+                if (err) {
+                    console.error(`[NotifyChanges] Error fetching weather: ${err}`);
+                    return resolve(); // Continue even if weather fetch fails
+                }
                 if (JSON.stringify(result) !== JSON.stringify(previousData.weather)) {
                     sendEmail(
                         'Grow a Garden: Weather Data Updated',
@@ -87,7 +94,10 @@ async function checkForChanges() {
 
         // Check item info
         await fetchAndUpdateData();
-        const newItemData = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
+        let newItemData = null;
+        if (fs.existsSync(DATA_FILE)) {
+            newItemData = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
+        }
         if (JSON.stringify(newItemData) !== JSON.stringify(previousData.items)) {
             await sendEmail(
                 'Grow a Garden: Item Data Updated',
@@ -97,14 +107,15 @@ async function checkForChanges() {
         }
 
         // Save updated previous data
-        fs.writeFileSync(PREV_DATA_FILE, JSON.stringify(previousData, null, 2));
+        try {
+            fs.writeFileSync(PREV_DATA_FILE, JSON.stringify(previousData, null, 2));
+        } catch (err) {
+            console.error(`[NotifyChanges] Error saving previous data: ${err}`);
+        }
     } catch (err) {
         console.error(`[NotifyChanges] Error checking for changes: ${err}`);
     }
 }
-
-// Initial load of cached item data
-loadCachedData();
 
 // Run checks every 5 minutes
 setInterval(checkForChanges, 5 * 60 * 1000);
@@ -112,7 +123,7 @@ setInterval(checkForChanges, 5 * 60 * 1000);
 // Initial check
 checkForChanges();
 
-// Express app setup (optional, if you want to expose an endpoint)
+// Express app setup
 const express = require('express');
 const app = express();
 
