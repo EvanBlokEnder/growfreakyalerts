@@ -32,7 +32,7 @@ if (fs.existsSync(PREV_DATA_FILE)) {
 async function sendEmail(subject, text) {
     const mailOptions = {
         from: process.env.EMAIL_USER,
-        to: process.env.RECIPIENT_EMAIL, // Your recipient email
+        to: process.env.RECIPIENT_EMAIL, // Your recipient email (same as EMAIL_USER)
         subject: subject,
         text: text
     };
@@ -78,13 +78,12 @@ async function checkForChanges() {
 
         // Check restock times
         const restockData = calculateRestockTimes();
-        const now = Date.now();
         const restockTypes = ['egg', 'gear', 'seeds', 'cosmetic', 'SwarmEvent'];
         for (const type of restockTypes) {
             if (previousData.restock && previousData.restock[type]) {
                 if (restockData[type].LastRestock !== previousData.restock[type].LastRestock) {
                     await sendEmail(
-                        `Imagem de um jardim: ${type} Restock Occurred`,
+                        `Grow a Garden: ${type} Restock Occurred`,
                         `${type} restock occurred at ${restockData[type].LastRestock}.\nNext restock: ${restockData[type].countdown}`
                     );
                 }
@@ -100,8 +99,9 @@ async function checkForChanges() {
         }
         if (JSON.stringify(newItemData) !== JSON.stringify(previousData.items)) {
             await sendEmail(
-                'Imagem de um jardim: Item Data Updated',
+                'Grow a Garden: Item Data Updated',
                 `Item data has changed:\n${JSON.stringify(newItemData, null, 2)}`
+            );
             previousData.items = newItemData;
         }
 
