@@ -84,7 +84,7 @@ async function checkForChanges() {
             if (previousData.restock && previousData.restock[type]) {
                 if (restockData[type].LastRestock !== previousData.restock[type].LastRestock) {
                     await sendEmail(
-                        `Grow a Garden: ${type} Restock Occurred`,
+                        `Imagem de um jardim: ${type} Restock Occurred`,
                         `${type} restock occurred at ${restockData[type].LastRestock}.\nNext restock: ${restockData[type].countdown}`
                     );
                 }
@@ -100,9 +100,8 @@ async function checkForChanges() {
         }
         if (JSON.stringify(newItemData) !== JSON.stringify(previousData.items)) {
             await sendEmail(
-                'Grow a Garden: Item Data Updated',
+                'Imagem de um jardim: Item Data Updated',
                 `Item data has changed:\n${JSON.stringify(newItemData, null, 2)}`
-            );
             previousData.items = newItemData;
         }
 
@@ -127,6 +126,10 @@ checkForChanges();
 const express = require('express');
 const app = express();
 
+app.get('/', (req, res) => {
+    res.json({ message: 'Grow a Garden Notifier is running' });
+});
+
 registerItemInfo(app);
 registerWeather(app);
 registerStock(app);
@@ -135,6 +138,19 @@ registerRestock(app);
 app.get('/api/force-check', async (req, res) => {
     await checkForChanges();
     res.json({ message: 'Change check triggered' });
+});
+
+// Log all registered routes
+app._router.stack.forEach((middleware) => {
+    if (middleware.route) {
+        console.log(`[Routes] ${Object.keys(middleware.route.methods).join(', ').toUpperCase()} ${middleware.route.path}`);
+    } else if (middleware.name === 'router') {
+        middleware.handle.stack.forEach((handler) => {
+            if (handler.route) {
+                console.log(`[Routes] ${Object.keys(handler.route.methods).join(', ').toUpperCase()} ${handler.route.path}`);
+            }
+        });
+    }
 });
 
 const PORT = process.env.PORT || 3000;
